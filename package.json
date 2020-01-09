@@ -1,0 +1,12 @@
+{
+	"name": "greeter-bot",
+	"version": "1.0.0",
+	"description": "My First Discord Bot",
+	"main": "bot.js",
+	"author": "Your Name",
+	"dependencies": {
+		"airtable": "^0.8.1",
+		"aws-xray-sdk": "^2.5.0",
+		"discord.js": "^11.5.1"
+	}
+}
