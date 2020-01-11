@@ -106,31 +106,58 @@ async function get_discord_tags(shifts) {
     var users_string = Array.from(user_ids).toString();
     console.log(users_string);
 
-    var uid_to_dtag = {};
-
+    var uId_to_tempId = {};
+    var temp_ids = new Set([]);
     user_filter = `SEARCH(RECORD_ID(), "${users_string}") != ""`;
     console.log(user_filter)
-    await table('Master Roster').select({
+    await table('Rider Shift Record').select({
         filterByFormula: user_filter,
-        fields: ["Discord Tag"]
+        fields: ["Name", "EMT"]
     }).eachPage(function page(records, fetchNextPage) {
         // This function (`page`) will get called for each page of records.
-
+        console.log("pages fetched");
         records.forEach(function(record) {
-            console.log('Retrieved', record.get('Name'));
+            console.log('Retrieved', record.get('Name'), record.getId(), record.get("EMT"));
+            uId_to_tempId[record.getId()] = record.get("EMT")
+            temp_ids.add(record.get("EMT"))
         });
-
         // To fetch the next page of records, call `fetchNextPage`.
         // If there are more records, `page` will get called again.
         // If there are no more records, `done` will get called.
         fetchNextPage();
-
-    }, function done(err) {
-        if (err) { console.error(err); return; }
+    // }, function done(err) {
+    //     if (err) { console.error(err); return; }
     });
+
+    var tempId_string = Array.from(temp_ids).toString();
+    var tempId_to_dTag = {};
+    var tempId_to_name = {};
+    user_filter = `SEARCH(RECORD_ID(), "${tempId_string}") != ""`;
+    console.log(user_filter)
+    await table('Master Roster').select({
+        filterByFormula: user_filter,
+        fields: ["Name", "Discord Tag"]
+    }).eachPage(function page(records, fetchNextPage) {
+        // This function (`page`) will get called for each page of records.
+        console.log("pages fetched");
+        records.forEach(function(record) {
+            console.log('Retrieved', record.get('Name'), record.getId(), record.get("Discord Tag"));
+            tempId_to_dTag[record.getId()] = record.get("Discord Tag")
+            tempId_to_name[record.getId()] = record.get("Name")
+        });
+        // To fetch the next page of records, call `fetchNextPage`.
+        // If there are more records, `page` will get called again.
+        // If there are no more records, `done` will get called.
+        fetchNextPage();
+    // }, function done(err) {
+    //     if (err) { console.error(err); return; }
+    });
+    console.log(uId_to_tempId)
+    console.log(tempId_to_name)
+    console.log(tempId_to_dTag)
+
     // .eachPage(function parse_dtag_records(records, fetchNextPage) {
     //     // `parse_dtag_records` will get called for each page of records.
-    //     console.log("pages fetched");
     //     // records.forEach(record => uid_to_dtag[record.getId()] = record["Discord Tag"]);
     //     // To fetch the next page of records, call `fetchNextPage`.
     //     // If there are more records, `parse_dtag_records` will get called again.
@@ -138,7 +165,6 @@ async function get_discord_tags(shifts) {
     //     // Note: `done` was removed due to not needing it, check airtable api for `done`
     //     fetchNextPage();
     // });
-    console.log(uid_to_dtag)
     return uid_to_dtag
 }
 
@@ -188,11 +214,11 @@ async function test_runner() {
     shifts = await get_shifts();
     console.log(shifts)
     uid_to_dtag = await get_discord_tags(shifts);
-
+    console.log(uid_to_dtag)
 }
 
 test_runner();
-client.login(auth.discord_token);
-test();
-client.destroy();
-console.log(status)
+// client.login(auth.discord_token);
+// test();
+// client.destroy();
+// console.log(status)
