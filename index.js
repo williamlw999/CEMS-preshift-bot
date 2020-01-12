@@ -7,7 +7,7 @@ const moment = require('moment-timezone');
 const auth = require('./auth.json');
 
 // api const's
-const table = new Airtable({apiKey: auth.airtable_token}).base(auth.airtable_base_token);
+const base = new Airtable({apiKey: auth.airtable_token}).base(auth.airtable_base_token);
 const client = new Discord.Client();
 
 // lambda is stupid about timezones (forces gmt), timezones must be converted manually
@@ -17,6 +17,9 @@ const ts_to_str = ts => `DATETIME_PARSE("${ts.format('MM-DD-YYYY HH:mm')} ${get_
 
 // helper function to sleep the process
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// error handler callback
+const err_handle = err => { console.error(err); fail(); return; };
 
 // statuses
 var status = {
@@ -31,7 +34,7 @@ function success(){
 }
 
 function fail(){
-    status[body] = JSON.stringify('Message failed to send');
+    status['body'] = JSON.stringify('Message failed to send');
     completed = true;
 }
 
@@ -51,15 +54,34 @@ client.on('ready', async () => {
     }
 
     // get shift info, emt info, and send messages
-    var shifts = await get_shifts();
-    console.log(`\n${shifts}\n`);
-    var translators = await get_translators(shifts);
-    console.log(`\n${translators}\n`);
-    await send_preshift_messages(shifts, translators);
+    var shifts = await get_shifts().catch(err_handle);
+    await send_preshift_messages(shifts).catch(err_handle);
 });
 
+// returns dict of linked record ids to fields
+function retrieve_link_data(record, linked_field, linked_table, fields, flatten=false) {
+    var t = base.table(linked_table);
+    var linked_promises = record.fields[linked_field].map((foreign_record_id) => {
+        return t.find(foreign_record_id);
+    });
+
+    return Promise.all(linked_promises).then((values) => {
+        values = values.map((v) => {
+            return fields.map(field => v._rawJson["fields"][field]);
+        });
+        values = flatten ? values.flat(Infinity) : values
+
+        record.fields[linked_field] = values;
+        record._rawJson.fields[linked_field] = values;
+    }).catch(err_handle);
+}
+
 // process records to create message json
-function process_shift_record(record) {
+async function process_shift_record(record) {
+    await retrieve_link_data(record, 'Rider Shift Record', 'Rider Shift Record', ["EMT"], true);
+    await retrieve_link_data(record, 'Rider Shift Record', 'Master Roster', ["Name", "Discord Tag"])
+    console.log(record.get('Rider Shift Record'))
+
     return {
         Shift: record.get('Shift'),
         Date: record.get('Date'),
@@ -74,126 +96,52 @@ function process_shift_record(record) {
 // NOTE: we write down ET dates on airtable, but airtable configured to use GMT
 async function get_shifts(){
     var shifts = [];
+    var shift_promises = [];
     // first shift of tomorrow
     var first_tomorrow = to_est(moment()).add(1, "day").set('hour', 4).set('minute', 29);
-    // first_tomorrow = to_est(moment()).set('month', 11).set('date', 3).set('hour', 4).set('minute', 59).set('year', 2019);
+    first_tomorrow = to_est(moment()).set('month', 11).set('date', 3).set('hour', 4).set('minute', 59).set('year', 2019);
     // last shift of tomorrow
     var last_tomorrow = to_est(moment()).add(2, "day").set('hour', 4).set('minute', 30);
-    // last_tomorrow = to_est(moment()).set('month', 11).set('date', 4).set('hour', 5).set('minute', 0).set('year', 2019);
-    
-    await preshift_channel.send(`\`\`\`ini`+
-        `\n[Preshift Messages for ${first_tomorrow.format('LLL')} - ${last_tomorrow.format('LLL')}!!!]\`\`\``)
+    last_tomorrow = to_est(moment()).set('month', 11).set('date', 4).set('hour', 5).set('minute', 0).set('year', 2019);
 
     // compose date range formula (IS_AFTER and IS_EFORE are not inclusive)
     var after_first = `IS_AFTER({DATE}, ${ts_to_str(first_tomorrow)})`;
     var before_last = `IS_BEFORE({DATE}, ${ts_to_str(last_tomorrow)})`;
     var date_range = `IF(AND(${after_first}, ${before_last}), 1, 0)`;
+    console.log(date_range)
+
+    await preshift_channel.send(`\`\`\`ini`+
+        `\n[Preshift Messages for ${first_tomorrow.format('LLL')} - ${last_tomorrow.format('LLL')}!!!]\`\`\``).catch(err_handle);
 
     // get shifts within date_range
-    await table('Shift Tracker').select({
+    await base('Shift Tracker').select({
         filterByFormula: date_range,
         fields: ["Date", "Shift", "Shift Type", "Hours", "Rider Shift Record"],
         view: "Grid view",
         sort: [{field: "Date", direction: "asc"}, {field: "Hours", direction: "desc"}]
-    }).eachPage(function parse_shift_records(records, fetchNextPage) {
+    }).all().then(async function parse_shift_records(records) {
         // `parse_shift_records` will get called for each page of records.
         console.log("shift pages fetched");
-        records.forEach(function(record) {
-            shifts.push(process_shift_record(record));
+        shift_promises = records.map(async function(record) {
+            shifts.push(await process_shift_record(record));
         });
-        // To fetch the next page of records, call `fetchNextPage`.
-        // If there are more records, `parse_shift_records` will get called again.
-        // If there are no more records, `done` will get called.
-        fetchNextPage();
-    // }, function done(err) {
-    //     if (err) { console.error(err); } return;
-    });
+        await Promise.all(shift_promises).catch(err_handle);
+        // `then` is called when done
+        // If an error is hit, `catch` will get called
+    }).then(() => console.table(shifts)).catch(err_handle);
     return shifts;
 }
 
-// create dictionaries for id -> tempId -> name + discord tag
-async function get_translators(shifts) {
-    // get all EMT ids (airtable id link to Rider Shift Record)
-    var user_ids = new Set([]);
-    shifts.forEach(shift => shift["EMTs"].forEach(uid => user_ids.add(uid)));
-    var users_string = Array.from(user_ids).toString();
-
-    // get all EMT ids part 2 (airtable id link to Master Roster)
-    var uId_to_tempId = {};
-    var temp_ids = new Set([]);
-    user_filter = `SEARCH(RECORD_ID(), "${users_string}") != ""`;
-    await table('Rider Shift Record').select({
-        filterByFormula: user_filter,
-        fields: ["Name", "EMT"]
-    }).eachPage(function page(records, fetchNextPage) {
-        // This function (`page`) will get called for each page of records.
-        console.log("rider shift record pages fetched");
-        records.forEach(function(record) {
-            uId_to_tempId[record.getId()] = record.get("EMT")
-            temp_ids.add(record.get("EMT"))
-        });
-        // To fetch the next page of records, call `fetchNextPage`.
-        // If there are more records, `page` will get called again.
-        // If there are no more records, `done` will get called.
-        fetchNextPage();
-    //  uncomment for debugging purposes, it seems to mess with the async promises, unclear
-    // }, function done(err) {
-    //     if (err) { console.error(err); return; }
-    });
-
-    // get all discord tags and names from Master Roster
-    var tempId_string = Array.from(temp_ids).toString();
-    var tempId_to_dTag = {};
-    var tempId_to_name = {};
-    user_filter = `SEARCH(RECORD_ID(), "${tempId_string}") != ""`;
-    await table('Master Roster').select({
-        filterByFormula: user_filter,
-        fields: ["Name", "Discord Tag"]
-    }).eachPage(function page(records, fetchNextPage) {
-        // This function (`page`) will get called for each page of records.
-        console.log("master roster pages fetched");
-        records.forEach(function(record) {
-            var name = record.get("Name")
-            var first_name = name.substr(name.indexOf(",")+2)
-            var last_name = name.substr(0, name.indexOf(","))
-            tempId_to_dTag[record.getId()] = record.get("Discord Tag")
-            tempId_to_name[record.getId()] =  `${first_name} ${last_name}`
-        });
-        // To fetch the next page of records, call `fetchNextPage`.
-        // If there are more records, `page` will get called again.
-        // If there are no more records, `done` will get called.
-        fetchNextPage();
-    //  uncomment for debugging purposes, it seems to mess with the async promises, unclear
-    // }, function done(err) {
-    //     if (err) { console.error(err); return; }
-    });
-
-    return {
-        "get_tempId": uId_to_tempId,
-        "get_dTag": tempId_to_dTag,
-        "get_name": tempId_to_name
-    };
+// emt record should be of the form [emt name, discord tag]
+function get_discord_tag(emt_record, guild_members) {
+    const get_member = (dtag) => guild_members.find(member => member.user.tag === dtag);
+    const get_name = (name) => `${name.substr(name.indexOf(",")+2)} ${name.substr(0, name.indexOf(","))}`;
+    return emt_record[1] ? get_member(emt_record[1]) : get_name(emt_record[0]);
 }
-
-// translates the 2 level user_id to a discord member or name
-function translate_id(user_id, translators, members){
-    var err;
-    try {
-        err = `First layer translation failed`
-        var tempId = translators["get_tempId"][user_id]
-        err = `Second layer translation failed`
-        dTag = translators["get_dTag"][tempId]
-        return dTag ? members.find(member => member.user.tag === dTag) : translators["get_name"][tempId]
-    } catch(e) {
-        console.log(e)
-        console.log(uesr_id, translators)
-        throw err;
-    }
-} 
 
 // generate the messages
 // only to be called after client is ready (through client.on(ready))
-async function send_preshift_messages(shifts, translators) {
+async function send_preshift_messages(shifts) {
     // crew room assignment function
     var counter = -1;
     rooms = 5;
@@ -204,15 +152,18 @@ async function send_preshift_messages(shifts, translators) {
 
     // handle no shifts
     if (!shifts || !shifts.length) {
-        await preshift_channel.send("No shifts tomorrow!");
+        await preshift_channel.send("No shifts tomorrow!").catch(err_handle);
         success();
         return;
     }
     // generate messages
+    shifts.reverse();
     var messages = [];
     shifts.forEach(function(shift){
-        members = shift["EMTs"].map(id => translate_id(id, translators, guild.members)).join(", ");
-        message = `**Pre-Shift Notification!**\n${members}\n` +
+        // shift["EMTs"] contains a list of [EMT name, discord tag]
+        members = shift["EMTs"].map(id => get_discord_tag(id, guild.members)).join(", ");
+        message = `**Pre-Shift Notification!**\n` +
+        `**EMTs:** ${members}\n` +
         `**Name:** ${shift["Shift"]}\n`+
         `**Date:** ${moment(shift["Date"]).format('LLL')}     **Hours:** ${shift["Hours"]}\n` +
         `**Crew Room:** ${room()}\n\u200b`;
@@ -221,8 +172,7 @@ async function send_preshift_messages(shifts, translators) {
     console.log(messages)
 
     var message_promises = messages.map(message => preshift_channel.send(message));
-
-    await Promise.all(message_promises);
+    await Promise.all(message_promises).catch(err_handle);
     success();
     return;
 }
@@ -238,7 +188,7 @@ exports.handler = async (event) => {
     status['correct_Time'] = to_est(moment()).hours() == 18;
 
     // Since there are two triggers one for EST and another for EDT
-    var live_mode = true;
+    var live_mode = false;
     if (!(to_est(moment()).hours() == 18) && live_mode) {
         console.log(status, "\n");
         return status;
@@ -254,7 +204,7 @@ exports.handler = async (event) => {
         await sleep(100);
     }
     // destroy the bot
-    await client.destroy()
+    await client.destroy().catch(err_handle)
 
     console.log(status, "\n")
     return status;
