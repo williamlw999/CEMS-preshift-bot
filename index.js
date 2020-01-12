@@ -99,10 +99,10 @@ async function get_shifts(){
     var shift_promises = [];
     // first shift of tomorrow
     var first_tomorrow = to_est(moment()).add(1, "day").set('hour', 4).set('minute', 29);
-    first_tomorrow = to_est(moment()).set('month', 11).set('date', 3).set('hour', 4).set('minute', 59).set('year', 2019);
+    // first_tomorrow = to_est(moment()).set('month', 11).set('date', 3).set('hour', 4).set('minute', 59).set('year', 2019);
     // last shift of tomorrow
     var last_tomorrow = to_est(moment()).add(2, "day").set('hour', 4).set('minute', 30);
-    last_tomorrow = to_est(moment()).set('month', 11).set('date', 4).set('hour', 5).set('minute', 0).set('year', 2019);
+    // last_tomorrow = to_est(moment()).set('month', 11).set('date', 4).set('hour', 5).set('minute', 0).set('year', 2019);
 
     // compose date range formula (IS_AFTER and IS_EFORE are not inclusive)
     var after_first = `IS_AFTER({DATE}, ${ts_to_str(first_tomorrow)})`;
@@ -157,15 +157,16 @@ async function send_preshift_messages(shifts) {
         return;
     }
     // generate messages
-    shifts.reverse();
     var messages = [];
+    shifts = shifts.sort((a,b) => moment(a["Date"]) - moment(b["Date"]));
     shifts.forEach(function(shift){
         // shift["EMTs"] contains a list of [EMT name, discord tag]
-        members = shift["EMTs"].map(id => get_discord_tag(id, guild.members)).join(", ");
+        var members = shift["EMTs"].map(id => get_discord_tag(id, guild.members)).join(", ");
+        var date = to_est(moment(shift["Date"]).utc()).format('MMMM DD, YYYY kk:mm')
         message = `**Pre-Shift Notification!**\n` +
         `**EMTs:** ${members}\n` +
         `**Name:** ${shift["Shift"]}\n`+
-        `**Date:** ${moment(shift["Date"]).format('LLL')}     **Hours:** ${shift["Hours"]}\n` +
+        `**Date:** ${date}     **Hours:** ${shift["Hours"]}\n` +
         `**Crew Room:** ${room()}\n\u200b`;
         messages.push(message);
     });
@@ -188,7 +189,7 @@ exports.handler = async (event) => {
     status['correct_Time'] = to_est(moment()).hours() == 18;
 
     // Since there are two triggers one for EST and another for EDT
-    var live_mode = false;
+    var live_mode = true;
     if (!(to_est(moment()).hours() == 18) && live_mode) {
         console.log(status, "\n");
         return status;
