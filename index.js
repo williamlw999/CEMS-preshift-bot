@@ -188,7 +188,7 @@ exports.handler = async (event) => {
     status['correct_Time'] = to_est(moment()).hours() == 18;
 
     // Since there are two triggers one for EST and another for EDT
-    var live_mode = false;
+    var live_mode = true;
     if (!(to_est(moment()).hours() == 18) && live_mode) {
         console.log(status, "\n");
         return status;
