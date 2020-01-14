@@ -86,7 +86,7 @@ async function process_shift_record(record) {
         Shift: record.get('Shift'),
         Date: record.get('Date'),
         Hours: record.get('Hours'),
-        // Location: record.get('Location'),
+        Location: record.get('Location'),
         EMTs: record.get('Rider Shift Record')
     }
 }
@@ -167,6 +167,7 @@ async function send_preshift_messages(shifts) {
         `**EMTs:** ${members}\n` +
         `**Name:** ${shift["Shift"]}\n`+
         `**Date:** ${date}     **Hours:** ${shift["Hours"]}\n` +
+        `**Location: ${shift["Location"]}\n` +
         `**Crew Room:** ${room()}\n\u200b`;
         messages.push(message);
     });
