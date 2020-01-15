@@ -6,6 +6,9 @@ const moment = require('moment-timezone');
 // auth file
 const auth = require('./auth.json');
 
+// Switches app to live mode
+const live_mode = true;
+
 // api const's
 const base = new Airtable({apiKey: auth.airtable_token}).base(auth.airtable_base_token);
 const client = new Discord.Client();
@@ -58,7 +61,7 @@ client.on('ready', async () => {
     await send_preshift_messages(shifts).catch(err_handle);
 });
 
-// returns dict of linked record ids to fields
+// reaplces linked_field with list fields from linked_table
 function retrieve_link_data(record, linked_field, linked_table, fields, flatten=false) {
     var t = base.table(linked_table);
     var linked_promises = record.fields[linked_field].map((foreign_record_id) => {
@@ -99,10 +102,13 @@ async function get_shifts(){
     var shift_promises = [];
     // first shift of tomorrow
     var first_tomorrow = to_est(moment()).add(1, "day").set('hour', 4).set('minute', 29);
-    // first_tomorrow = to_est(moment()).set('month', 11).set('date', 3).set('hour', 4).set('minute', 59).set('year', 2019);
     // last shift of tomorrow
     var last_tomorrow = to_est(moment()).add(2, "day").set('hour', 4).set('minute', 30);
-    // last_tomorrow = to_est(moment()).set('month', 11).set('date', 4).set('hour', 5).set('minute', 0).set('year', 2019);
+
+    if (!live_mode) {  
+        last_tomorrow = to_est(moment()).set('month', 11).set('date', 4).set('hour', 5).set('minute', 0).set('year', 2019);
+        first_tomorrow = to_est(moment()).set('month', 11).set('date', 3).set('hour', 4).set('minute', 59).set('year', 2019);
+    }
 
     // compose date range formula (IS_AFTER and IS_EFORE are not inclusive)
     var after_first = `IS_AFTER({DATE}, ${ts_to_str(first_tomorrow)})`;
@@ -167,7 +173,7 @@ async function send_preshift_messages(shifts) {
         `**EMTs:** ${members}\n` +
         `**Name:** ${shift["Shift"]}\n`+
         `**Date:** ${date}     **Hours:** ${shift["Hours"]}\n` +
-        `**Location: ${shift["Location"]}\n` +
+        `**Location:** ${shift["Location"]}\n` +
         `**Crew Room:** ${room()}\n\u200b`;
         messages.push(message);
     });
@@ -190,7 +196,6 @@ exports.handler = async (event) => {
     status['correct_Time'] = to_est(moment()).hours() == 18;
 
     // Since there are two triggers one for EST and another for EDT
-    var live_mode = true;
     if (!(to_est(moment()).hours() == 18) && live_mode) {
         console.log(status, "\n");
         return status;
