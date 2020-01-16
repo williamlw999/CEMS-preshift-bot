@@ -149,7 +149,11 @@ async function get_shifts(){
 function get_discord_tag(emt_record, guild_members) {
     const get_member = (dtag) => guild_members.find(member => member.user.tag === dtag);
     const get_name = (name) => `${name.substr(name.indexOf(",")+2)} ${name.substr(0, name.indexOf(","))}`;
-    return emt_record[1] ? get_member(emt_record[1]) : get_name(emt_record[0]);
+    if (emt_record[1]) {
+        dtag = get_member(emt_record[1]);
+        return dtag ? dtag : get_name(emt_record[0])
+    }
+    return get_name(emt_record[0]);
 }
 
 // generate the messages
