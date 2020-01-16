@@ -6,8 +6,11 @@ const moment = require('moment-timezone');
 // auth file
 const auth = require('./auth.json');
 
-// Switches app to live mode
+// Switches app functionality
+// live mode one checks correct time, live mode off additionally sets time for December 3, 2019 for 3 CS 50 shifts
+// send_msgs controls message sending
 const live_mode = true;
+const send_msgs = true;
 
 // api const's
 const base = new Airtable({apiKey: auth.airtable_token}).base(auth.airtable_base_token);
@@ -63,7 +66,7 @@ client.on('ready', async () => {
 
 // reaplces linked_field with list fields from linked_table
 function retrieve_link_data(record, linked_field, linked_table, fields, flatten=false) {
-    var t = base.table(linked_table);
+    const t = base.table(linked_table);
     var linked_promises = record.fields[linked_field].map((foreign_record_id) => {
         return t.find(foreign_record_id);
     });
@@ -106,8 +109,9 @@ async function get_shifts(){
     var last_tomorrow = to_est(moment()).add(2, "day").set('hour', 4).set('minute', 30);
 
     if (!live_mode) {  
+        // cs50 shifts
         last_tomorrow = to_est(moment()).set('month', 11).set('date', 4).set('hour', 5).set('minute', 0).set('year', 2019);
-        first_tomorrow = to_est(moment()).set('month', 11).set('date', 3).set('hour', 4).set('minute', 59).set('year', 2019);
+        first_tomorrow = to_est(moment()).set('month', 11).set('date', 3).set('hour', 4).set('minute', 59).set('year', 2019);       
     }
 
     // compose date range formula (IS_AFTER and IS_EFORE are not inclusive)
@@ -116,8 +120,10 @@ async function get_shifts(){
     var date_range = `IF(AND(${after_first}, ${before_last}), 1, 0)`;
     console.log(date_range)
 
-    await preshift_channel.send(`\`\`\`ini`+
-        `\n[Preshift Messages for ${first_tomorrow.format('LLL')} - ${last_tomorrow.format('LLL')}!!!]\`\`\``).catch(err_handle);
+    if(send_msgs) {
+        await preshift_channel.send(`\`\`\`ini`+
+            `\n[Preshift Messages for ${first_tomorrow.format('LLL')} - ${last_tomorrow.format('LLL')}!!!]\`\`\``).catch(err_handle);
+    }
 
     // get shifts within date_range
     await base('Shift Tracker').select({
@@ -128,6 +134,7 @@ async function get_shifts(){
     }).all().then(async function parse_shift_records(records) {
         // `parse_shift_records` will get called for each page of records.
         console.log("shift pages fetched");
+
         shift_promises = records.map(async function(record) {
             shifts.push(await process_shift_record(record));
         });
@@ -158,7 +165,9 @@ async function send_preshift_messages(shifts) {
 
     // handle no shifts
     if (!shifts || !shifts.length) {
-        await preshift_channel.send("No shifts tomorrow!").catch(err_handle);
+        if (send_msgs) {
+            await preshift_channel.send("No shifts tomorrow!").catch(err_handle);
+        }
         success();
         return;
     }
@@ -179,7 +188,8 @@ async function send_preshift_messages(shifts) {
     });
     console.log(messages)
 
-    var message_promises = messages.map(message => preshift_channel.send(message));
+    var message_promises = messages.map(message => {if(send_msgs) preshift_channel.send(message)});
+
     await Promise.all(message_promises).catch(err_handle);
     success();
     return;
