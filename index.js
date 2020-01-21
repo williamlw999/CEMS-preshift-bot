@@ -66,13 +66,15 @@ client.on('ready', async () => {
 
 // reaplces linked_field with list fields from linked_table
 function retrieve_link_data(record, linked_field, linked_table, fields, flatten=false) {
+    if (!fields) throw "must specify which fields from linked_field to retrive"
     const t = base.table(linked_table);
-    var linked_promises = record.fields[linked_field].map((foreign_record_id) => {
+    const linkage = record.fields[linked_field];
+    const linked_promises = (!linkage) ? [] : linkage.map((foreign_record_id) => {
         return t.find(foreign_record_id);
     });
 
     return Promise.all(linked_promises).then((values) => {
-        values = values.map((v) => {
+        values = (!values) ? [] : values.map((v) => {
             return fields.map(field => v._rawJson["fields"][field]);
         });
         values = flatten ? values.flat(Infinity) : values
@@ -111,19 +113,20 @@ async function get_shifts(){
     if (!live_mode) {  
         // cs50 shifts
         last_tomorrow = to_est(moment()).set('month', 11).set('date', 4).set('hour', 5).set('minute', 0).set('year', 2019);
-        first_tomorrow = to_est(moment()).set('month', 11).set('date', 3).set('hour', 4).set('minute', 59).set('year', 2019);       
+        first_tomorrow = to_est(moment()).set('month', 11).set('date', 3).set('hour', 4).set('minute', 59).set('year', 2019);   
+
+        first_tomorrow = to_est(moment()).set('month', 0).set('date', 19).set('hour', 4).set('minute', 59).set('year', 2020);         
+        last_tomorrow = to_est(moment()).set('month', 0).set('date', 21).set('hour', 4).set('minute', 59).set('year', 2020);   
     }
 
     // compose date range formula (IS_AFTER and IS_EFORE are not inclusive)
     var after_first = `IS_AFTER({DATE}, ${ts_to_str(first_tomorrow)})`;
     var before_last = `IS_BEFORE({DATE}, ${ts_to_str(last_tomorrow)})`;
     var date_range = `IF(AND(${after_first}, ${before_last}), 1, 0)`;
-    console.log(date_range)
+    console.log(date_range);
 
-    if(send_msgs) {
-        await preshift_channel.send(`\`\`\`ini`+
-            `\n[Preshift Messages for ${first_tomorrow.format('LLL')} - ${last_tomorrow.format('LLL')}!!!]\`\`\``).catch(err_handle);
-    }
+    var time_msg = `\`\`\`ini\n[Preshift Messages for ${first_tomorrow.format('LLL')} - ${last_tomorrow.format('LLL')}!!!]\`\`\``;
+    send_msgs ? await preshift_channel.send(time_msg).catch(err_handle) : console.log(time_msg);
 
     // get shifts within date_range
     await base('Shift Tracker').select({
@@ -134,6 +137,8 @@ async function get_shifts(){
     }).all().then(async function parse_shift_records(records) {
         // `parse_shift_records` will get called for each page of records.
         console.log("shift pages fetched");
+
+        if (!records) throw "pages are undefined" 
 
         shift_promises = records.map(async function(record) {
             shifts.push(await process_shift_record(record));
@@ -180,13 +185,18 @@ async function send_preshift_messages(shifts) {
     shifts = shifts.sort((a,b) => moment(a["Date"]) - moment(b["Date"]));
     shifts.forEach(function(shift){
         // shift["EMTs"] contains a list of [EMT name, discord tag]
-        var members = shift["EMTs"].map(id => get_discord_tag(id, guild.members)).join(", ");
+        if (!shift["EMTs"]  || shift["EMTs"].length == 0) {
+            var members = "NO EMTS ASSIGNED ON RECORD"
+            console.log("NO EMTS ON SHIFT");
+        } else {
+            var members = shift["EMTs"].map(id => get_discord_tag(id, guild.members)).join(", ");
+        }
         var date = to_est(moment(shift["Date"]).utc()).format('MMMM DD, YYYY kk:mm')
         message = `**Pre-Shift Notification!**\n` +
         `**EMTs:** ${members}\n` +
-        `**Name:** ${shift["Shift"]}\n`+
+        `**Name:** ${shift["Shift"] ? shift["Shift"] : "No shift name on record"}\n`+
         `**Date:** ${date}     **Hours:** ${shift["Hours"]}\n` +
-        `**Location:** ${shift["Location"]}\n` +
+        `**Location:** ${shift["Location"] ? shift["Location"] : "No location on record"}\n` +
         `**Crew Room:** ${room()}\n\u200b`;
         messages.push(message);
     });
