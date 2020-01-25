@@ -10,6 +10,7 @@ const auth = require('./auth.json');
 // live mode one checks correct time, live mode off additionally sets time for December 3, 2019 for 3 CS 50 shifts
 // send_msgs controls message sending
 const live_mode = true;
+const time_check = true;
 const send_msgs = true;
 
 // api const's
@@ -52,7 +53,7 @@ client.on('ready', async () => {
     console.log(`Logged in as ${client.user.tag}!\n`);
 
     // find our server and pre shift channel
-    guild = client.guilds.find(g => g.name === "Crimson EMS");
+    guild = client.guilds.find(g => g.name === "CrimsonEMS");
     if (guild && guild.channels.find(ch => ch.name === 'pre-shift-reminders')){
         preshift_channel = guild.channels.find(ch => ch.name === 'pre-shift-reminders');
     } else {
@@ -116,17 +117,20 @@ async function get_shifts(){
         first_tomorrow = to_est(moment()).set('month', 11).set('date', 3).set('hour', 4).set('minute', 59).set('year', 2019);   
 
         first_tomorrow = to_est(moment()).set('month', 0).set('date', 19).set('hour', 4).set('minute', 59).set('year', 2020);         
-        last_tomorrow = to_est(moment()).set('month', 0).set('date', 21).set('hour', 4).set('minute', 59).set('year', 2020);   
+        last_tomorrow = to_est(moment()).set('month', 0).set('date', 23).set('hour', 4).set('minute', 59).set('year', 2020);   
     }
 
     // compose date range formula (IS_AFTER and IS_EFORE are not inclusive)
     var after_first = `IS_AFTER({DATE}, ${ts_to_str(first_tomorrow)})`;
     var before_last = `IS_BEFORE({DATE}, ${ts_to_str(last_tomorrow)})`;
     var date_range = `IF(AND(${after_first}, ${before_last}), 1, 0)`;
-    console.log(date_range);
 
     var time_msg = `\`\`\`ini\n[Preshift Messages for ${first_tomorrow.format('LLL')} - ${last_tomorrow.format('LLL')}!!!]\`\`\``;
-    send_msgs ? await preshift_channel.send(time_msg).catch(err_handle) : console.log(time_msg);
+
+    console.log(date_range);
+    console.log(time_msg)
+
+    send_msgs ? await preshift_channel.send(time_msg).catch(err_handle) : undefined;
 
     // get shifts within date_range
     await base('Shift Tracker').select({
@@ -186,7 +190,7 @@ async function send_preshift_messages(shifts) {
     shifts.forEach(function(shift){
         // shift["EMTs"] contains a list of [EMT name, discord tag]
         if (!shift["EMTs"]  || shift["EMTs"].length == 0) {
-            var members = "NO EMTS ASSIGNED ON RECORD"
+            var members = "No EMTs assigned on record"
             console.log("NO EMTS ON SHIFT");
         } else {
             var members = shift["EMTs"].map(id => get_discord_tag(id, guild.members)).join(", ");
@@ -202,8 +206,8 @@ async function send_preshift_messages(shifts) {
     });
     console.log(messages)
 
-    var message_promises = messages.map(message => {if(send_msgs) preshift_channel.send(message)});
-
+    var message_promises = messages.map(message => send_msgs ? preshift_channel.send(message) : undefined);
+    console.log(message_promises);
     await Promise.all(message_promises).catch(err_handle);
     success();
     return;
@@ -220,7 +224,7 @@ exports.handler = async (event) => {
     status['correct_Time'] = to_est(moment()).hours() == 18;
 
     // Since there are two triggers one for EST and another for EDT
-    if (!(to_est(moment()).hours() == 18) && live_mode) {
+    if (time_check && !(to_est(moment()).hours() == 18)) {
         console.log(status, "\n");
         return status;
     }
