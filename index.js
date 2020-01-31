@@ -116,8 +116,8 @@ async function get_shifts(){
         last_tomorrow = to_est(moment()).set('month', 11).set('date', 4).set('hour', 5).set('minute', 0).set('year', 2019);
         first_tomorrow = to_est(moment()).set('month', 11).set('date', 3).set('hour', 4).set('minute', 59).set('year', 2019);   
 
-        first_tomorrow = to_est(moment()).set('month', 0).set('date', 19).set('hour', 4).set('minute', 59).set('year', 2020);         
-        last_tomorrow = to_est(moment()).set('month', 0).set('date', 23).set('hour', 4).set('minute', 59).set('year', 2020);   
+        first_tomorrow = to_est(moment()).set('month', 0).set('date', 30).set('hour', 4).set('minute', 59).set('year', 2020);         
+        last_tomorrow = to_est(moment()).set('month', 0).set('date', 31).set('hour', 4).set('minute', 59).set('year', 2020);   
     }
 
     // compose date range formula (IS_AFTER and IS_EFORE are not inclusive)
@@ -156,7 +156,7 @@ async function get_shifts(){
 
 // emt record should be of the form [emt name, discord tag]
 function get_discord_tag(emt_record, guild_members) {
-    const get_member = (dtag) => guild_members.find(member => member.user.tag === dtag);
+    const get_member = (dtag) => guild_members.find(member => member.user.tag.toLowerCase() === dtag.toLowerCase());
     const get_name = (name) => `${name.substr(name.indexOf(",")+2)} ${name.substr(0, name.indexOf(","))}`;
     if (emt_record[1]) {
         dtag = get_member(emt_record[1]);
