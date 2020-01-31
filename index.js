@@ -9,9 +9,9 @@ const auth = require('./auth.json');
 // Switches app functionality
 // live mode one checks correct time, live mode off additionally sets time for December 3, 2019 for 3 CS 50 shifts
 // send_msgs controls message sending
-const live_mode = true;
-const time_check = true;
-const send_msgs = true;
+const live_mode = false;
+const time_check = false;
+const send_msgs = false;
 
 // api const's
 const base = new Airtable({apiKey: auth.airtable_token}).base(auth.airtable_base_token);
@@ -106,6 +106,7 @@ async function process_shift_record(record) {
 async function get_shifts(){
     var shifts = [];
     var shift_promises = [];
+    // Note that moment() returns the GMT time in Lambda, so we manually convert to EST
     // first shift of tomorrow
     var first_tomorrow = to_est(moment()).add(1, "day").set('hour', 4).set('minute', 29);
     // last shift of tomorrow
@@ -135,7 +136,7 @@ async function get_shifts(){
     // get shifts within date_range
     await base('Shift Tracker').select({
         filterByFormula: date_range,
-        fields: ["Date", "Shift", "Shift Type", "Hours", "Rider Shift Record"],
+        fields: ["Date", "Shift", "Shift Type", "Hours", "Rider Shift Record", "Location"],
         view: "Grid view",
         sort: [{field: "Date", direction: "asc"}, {field: "Hours", direction: "desc"}]
     }).all().then(async function parse_shift_records(records) {
@@ -195,7 +196,7 @@ async function send_preshift_messages(shifts) {
         } else {
             var members = shift["EMTs"].map(id => get_discord_tag(id, guild.members)).join(", ");
         }
-        var date = to_est(moment(shift["Date"]).utc()).format('MMMM DD, YYYY kk:mm')
+        var date = moment(shift["Date"]).utc().format('MMMM DD, YYYY kk:mm')
         message = `**Pre-Shift Notification!**\n` +
         `**EMTs:** ${members}\n` +
         `**Name:** ${shift["Shift"] ? shift["Shift"] : "No shift name on record"}\n`+
@@ -204,7 +205,8 @@ async function send_preshift_messages(shifts) {
         `**Crew Room:** ${room()}\n\u200b`;
         messages.push(message);
     });
-    console.log(messages)
+    console.log(messages);
+    status["messages"] = messages;
 
     var message_promises = messages.map(message => send_msgs ? preshift_channel.send(message) : undefined);
     console.log(message_promises);
