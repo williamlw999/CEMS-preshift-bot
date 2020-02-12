@@ -117,8 +117,8 @@ async function get_shifts(){
         last_tomorrow = to_est(moment()).set('month', 11).set('date', 4).set('hour', 5).set('minute', 0).set('year', 2019);
         first_tomorrow = to_est(moment()).set('month', 11).set('date', 3).set('hour', 4).set('minute', 59).set('year', 2019);   
 
-        first_tomorrow = to_est(moment()).set('month', 0).set('date', 30).set('hour', 4).set('minute', 59).set('year', 2020);         
-        last_tomorrow = to_est(moment()).set('month', 0).set('date', 31).set('hour', 4).set('minute', 59).set('year', 2020);   
+        first_tomorrow = to_est(moment()).set('month', 0).set('date', 31).set('hour', 4).set('minute', 59).set('year', 2020);         
+        last_tomorrow = to_est(moment()).set('month', 1).set('date', 1).set('hour', 4).set('minute', 59).set('year', 2020);   
     }
 
     // compose date range formula (IS_AFTER and IS_EFORE are not inclusive)
@@ -129,7 +129,6 @@ async function get_shifts(){
     var time_msg = `\`\`\`ini\n[Preshift Messages for ${first_tomorrow.format('LLL')} - ${last_tomorrow.format('LLL')}!!!]\`\`\``;
 
     console.log(date_range);
-    console.log(time_msg)
 
     send_msgs ? await preshift_channel.send(time_msg).catch(err_handle) : undefined;
 
@@ -169,14 +168,6 @@ function get_discord_tag(emt_record, guild_members) {
 // generate the messages
 // only to be called after client is ready (through client.on(ready))
 async function send_preshift_messages(shifts) {
-    // crew room assignment function
-    var counter = -1;
-    rooms = 5;
-    const room = () => {
-        counter++;
-        return counter % rooms + 1;
-    } 
-
     // handle no shifts
     if (!shifts || !shifts.length) {
         if (send_msgs) {
@@ -192,7 +183,6 @@ async function send_preshift_messages(shifts) {
         // shift["EMTs"] contains a list of [EMT name, discord tag]
         if (!shift["EMTs"]  || shift["EMTs"].length == 0) {
             var members = "No EMTs assigned on record"
-            console.log("NO EMTS ON SHIFT");
         } else {
             var members = shift["EMTs"].map(id => get_discord_tag(id, guild.members)).join(", ");
         }
@@ -201,15 +191,16 @@ async function send_preshift_messages(shifts) {
         `**EMTs:** ${members}\n` +
         `**Name:** ${shift["Shift"] ? shift["Shift"] : "No shift name on record"}\n`+
         `**Date:** ${date}     **Hours:** ${shift["Hours"]}\n` +
-        `**Location:** ${shift["Location"] ? shift["Location"] : "No location on record"}\n` +
-        `**Crew Room:** ${room()}\n\u200b`;
+        `**Location:** ${shift["Location"] ? shift["Location"] : "No location on record"}\n\u200b`;
         messages.push(message);
     });
-    console.log(messages);
+    console.log("messages generated");
+
+    var disclaimer = `Note: The pre-shift bot is still in beta-testing, so please do not solely rely on this resource!`;
+    messages.push(disclaimer);
     status["messages"] = messages;
 
     var message_promises = messages.map(message => send_msgs ? preshift_channel.send(message) : undefined);
-    console.log(message_promises);
     await Promise.all(message_promises).catch(err_handle);
     success();
     return;
