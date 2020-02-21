@@ -17,10 +17,12 @@ const send_msgs = false;
 const base = new Airtable({apiKey: auth.airtable_token}).base(auth.airtable_base_token);
 const client = new Discord.Client();
 
-// lambda is stupid about timezones (forces gmt), timezones must be converted manually
+// lambda is bad with timezones (forces gmt), timezones must be converted manually
 const to_est = ts => ts.isDST() ? ts.subtract(4, 'hours') : ts.subtract(5, 'hours');
 const get_et_tz = () => moment().isDST() ? "-04:00" : "-05:00"
-const ts_to_str = ts => `DATETIME_PARSE("${ts.format('MM-DD-YYYY HH:mm')} ${get_et_tz()}", 'MM-DD-YYYY HH:mm Z')`;
+// this version of ts_to_str adds the est timezone, but airtable is currently using GMT
+// const ts_to_str = ts => `DATETIME_PARSE("${ts.format('MM-DD-YYYY HH:mm')} ${get_et_tz()}", 'MM-DD-YYYY HH:mm Z')`;
+const ts_to_str = ts => `DATETIME_PARSE("${ts.format('MM-DD-YYYY HH:mm')}$", 'MM-DD-YYYY HH:mm Z')`;
 
 // helper function to sleep the process
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -113,15 +115,12 @@ async function get_shifts(){
     var last_tomorrow = to_est(moment()).add(2, "day").set('hour', 4).set('minute', 30);
 
     if (!live_mode) {  
-        // cs50 shifts
-        last_tomorrow = to_est(moment()).set('month', 11).set('date', 4).set('hour', 5).set('minute', 0).set('year', 2019);
-        first_tomorrow = to_est(moment()).set('month', 11).set('date', 3).set('hour', 4).set('minute', 59).set('year', 2019);   
-
-        first_tomorrow = to_est(moment()).set('month', 0).set('date', 31).set('hour', 4).set('minute', 59).set('year', 2020);         
-        last_tomorrow = to_est(moment()).set('month', 1).set('date', 1).set('hour', 4).set('minute', 59).set('year', 2020);   
+        // months are 0 indexed   
+        first_tomorrow = to_est(moment()).set('month', 1).set('date', 15).set('year', 2020).set('hour', 4).set('minute', 30);         
+        last_tomorrow = to_est(moment()).set('month', 1).set('date', 16).set('year', 2020).set('hour', 4).set('minute', 30);   
     }
 
-    // compose date range formula (IS_AFTER and IS_EFORE are not inclusive)
+    // compose date range formula (IS_AFTER and IS_BEFORE are not inclusive)
     var after_first = `IS_AFTER({DATE}, ${ts_to_str(first_tomorrow)})`;
     var before_last = `IS_BEFORE({DATE}, ${ts_to_str(last_tomorrow)})`;
     var date_range = `IF(AND(${after_first}, ${before_last}), 1, 0)`;
