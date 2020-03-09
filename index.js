@@ -13,16 +13,16 @@ const live_mode = false;
 const time_check = false;
 const send_msgs = false;
 
+// message constants
+const no_shifts = "No shifts tomorrow!"
+const disclaimer = `Note: The pre-shift bot is still in beta-testing, so please do not solely rely on this resource!`;
+const contact = `If there is a problem within 24 hours of your shift, please contact the Crew Officer at (720) 454-9113`;
+
 // api const's
 const base = new Airtable({apiKey: auth.airtable_token}).base(auth.airtable_base_token);
 const client = new Discord.Client();
 
-// lambda is bad with timezones (forces gmt), timezones must be converted manually
-const to_est = ts => ts.isDST() ? ts.subtract(4, 'hours') : ts.subtract(5, 'hours');
-const get_et_tz = () => moment().isDST() ? "-04:00" : "-05:00"
-// this version of ts_to_str adds the est timezone, but airtable is currently using GMT
-// const ts_to_str = ts => `DATETIME_PARSE("${ts.format('MM-DD-YYYY HH:mm')} ${get_et_tz()}", 'MM-DD-YYYY HH:mm Z')`;
-const ts_to_str = ts => `DATETIME_PARSE("${ts.format('MM-DD-YYYY HH:mm')}$", 'MM-DD-YYYY HH:mm Z')`;
+const ts_to_str = ts => `DATETIME_PARSE("${ts.format('MM-DD-YYYY HH:mm')}$", 'MM-DD-YYYY HH:mm')`;
 
 // helper function to sleep the process
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -108,16 +108,16 @@ async function process_shift_record(record) {
 async function get_shifts(){
     var shifts = [];
     var shift_promises = [];
-    // Note that moment() returns the GMT time in Lambda, so we manually convert to EST
+    // currently airtable uses GMT times, so we do not need to convert times as lambda system is in GMT
     // first shift of tomorrow
-    var first_tomorrow = to_est(moment()).add(1, "day").set('hour', 4).set('minute', 29);
+    var first_tomorrow = moment().add(1, "day").set('hour', 4).set('minute', 29);
     // last shift of tomorrow
-    var last_tomorrow = to_est(moment()).add(2, "day").set('hour', 4).set('minute', 30);
+    var last_tomorrow = moment().add(2, "day").set('hour', 4).set('minute', 30);
 
     if (!live_mode) {  
         // months are 0 indexed   
-        first_tomorrow = to_est(moment()).set('month', 1).set('date', 15).set('year', 2020).set('hour', 4).set('minute', 30);         
-        last_tomorrow = to_est(moment()).set('month', 1).set('date', 16).set('year', 2020).set('hour', 4).set('minute', 30);   
+        first_tomorrow = moment().set('month', 2).set('date', 8).set('year', 2020).set('hour', 4).set('minute', 30);         
+        last_tomorrow = moment().set('month', 2).set('date', 9).set('year', 2020).set('hour', 4).set('minute', 30);   
     }
 
     // compose date range formula (IS_AFTER and IS_BEFORE are not inclusive)
@@ -170,7 +170,7 @@ async function send_preshift_messages(shifts) {
     // handle no shifts
     if (!shifts || !shifts.length) {
         if (send_msgs) {
-            await preshift_channel.send("No shifts tomorrow!").catch(err_handle);
+            await preshift_channel.send(no_shifts + "\n" + contact).catch(err_handle);
         }
         success();
         return;
@@ -195,8 +195,7 @@ async function send_preshift_messages(shifts) {
     });
     console.log("messages generated");
 
-    var disclaimer = `Note: The pre-shift bot is still in beta-testing, so please do not solely rely on this resource!`;
-    messages.push(disclaimer);
+    messages.push(disclaimer + "\n" + contact);
     status["messages"] = messages;
 
     var message_promises = messages.map(message => send_msgs ? preshift_channel.send(message) : undefined);
@@ -212,11 +211,11 @@ process.on('exit', () => completed = true);
 exports.handler = async (event) => {
     // store time stamp info 
     status['utc_timestamp'] = moment().format();
-    status['et_timestamp'] = to_est(moment()).format();
-    status['correct_Time'] = to_est(moment()).hours() == 18;
+    status['et_timestamp'] = moment.tz("America/New_York").format();
+    status['correct_Time'] = moment.tz("America/New_York").hours() == 18;
 
     // Since there are two triggers one for EST and another for EDT
-    if (time_check && !(to_est(moment()).hours() == 18)) {
+    if (time_check && !(moment.tz("America/New_York").hours() == 18)) {
         console.log(status, "\n");
         return status;
     }
