@@ -10,6 +10,7 @@ const auth = require('./auth.json');
 // live mode one checks correct time, live mode off additionally sets time for December 3, 2019 for 3 CS 50 shifts
 // send_msgs controls message sending
 const live_mode = false;
+const test_time = false;
 const time_check = false;
 const send_msgs = false;
 
@@ -45,6 +46,7 @@ client.on('ready', async () => {
     } else {
         throw `Crimson EMS server or pre-shift-reminders channel not found`;
     }
+    preshift_channel = live_mode ? preshift_channel : guild.channels.cache.find(ch => ch.name === 'test-bot')
 });
 
 
@@ -55,7 +57,7 @@ exports.handler = async (event) => {
         utc_timestamp : moment().format(),
         et_timestamp : moment.tz("America/New_York").format(),
         correct_Time : moment.tz("America/New_York").hours() == 18,
-        live_mode : live_mode,
+        test_time : test_time,
         time_check : time_check,
         send_msgs : send_msgs,
     };
@@ -99,7 +101,7 @@ async function get_shifts(status){
     // last shift of tomorrow
     var last_tomorrow = moment().add(2, "day").set('hour', 4).set('minute', 30);
 
-    if (!live_mode) {  
+    if (!test_time) {  
         // months are 0 indexed   
         first_tomorrow = moment().set('month', 2).set('date', 8).set('year', 2020).set('hour', 4).set('minute', 30);         
         last_tomorrow = moment().set('month', 2).set('date', 9).set('year', 2020).set('hour', 4).set('minute', 30);   
