@@ -7,48 +7,30 @@ const moment = require('moment-timezone');
 const auth = require('./auth.json');
 
 // Switches app functionality
-// live mode one checks correct time, live mode off additionally sets time for December 3, 2019 for 3 CS 50 shifts
-// send_msgs controls message sending
+// live mode false sends to bot-test channel
+// test_time false allows you to set custom time range in code
+// time_check false allows bot to run at any time (ie. not just 6:30 pm eastern)
+// send_msgs false prevents message sending
 const live_mode = false;
 const test_time = false;
 const time_check = false;
-const send_msgs = false;
+const send_msgs = true;
 
 // message constants
 const no_shifts = "No shifts tomorrow!"
-const disclaimer = `Note: The pre-shift bot is still in beta-testing, so please do not solely rely on this resource!`;
-const contact = `If there is a problem within 24 hours of your shift, please contact the Crew Officer at (720) 454-9113`;
+const disclaimer = "Note: The pre-shift bot is still in beta-testing, so please do not solely rely on this resource!";
+const contact = "If there is a problem within 24 hours of your shift, please contact the Crew Officer at (720) 454-9113";
 
 // api const's
 const base = new Airtable({apiKey: auth.airtable_token}).base(auth.airtable_base_token);
 const client = new Discord.Client();
 
-const ts_to_str = ts => `DATETIME_PARSE("${ts.format('MM-DD-YYYY HH:mm')}$", 'MM-DD-YYYY HH:mm')`;
-
-// helper function to sleep the process
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-
 // error handling
 const err_handle = (err) => { console.error(err); return; };
 
-var guild = null;
-var preshift_channel = null;
-
-
-// discord client ready handler
-client.on('ready', async () => {
-    console.log(`Logged in as ${client.user.tag}!\n`);
-
-    // find our server and pre shift channel
-    guild = client.guilds.cache.find(g => g.name === "CrimsonEMS");
-    if (guild && guild.channels.cache.find(ch => ch.name === 'pre-shift-reminders')){
-        preshift_channel = guild.channels.cache.find(ch => ch.name === 'pre-shift-reminders');
-    } else {
-        throw `Crimson EMS server or pre-shift-reminders channel not found`;
-    }
-    preshift_channel = live_mode ? preshift_channel : guild.channels.cache.find(ch => ch.name === 'test-bot')
-});
-
+var channelName;
+var preshift_channel;
+var guild;
 
 // AWS Lambda trigger handler
 exports.handler = async (event) => {
@@ -56,7 +38,7 @@ exports.handler = async (event) => {
     var status = {
         utc_timestamp : moment().format(),
         et_timestamp : moment.tz("America/New_York").format(),
-        correct_Time : moment.tz("America/New_York").hours() == 18,
+        correct_time : moment.tz("America/New_York").hours() == 18,
         test_time : test_time,
         time_check : time_check,
         send_msgs : send_msgs,
@@ -64,21 +46,34 @@ exports.handler = async (event) => {
 
     // Since there are two triggers one for EST and another for EDT
     if (time_check && !(moment.tz("America/New_York").hours() == 18)) {
+        console.log("Time check failed. Returning");
         console.log(status, "\n");
         return status;
     }
 
     // deploy the bot
-    client.login(auth.discord_token);    
-    // short-poll until client.on(ready) handler completes
-    while(guild === null) {
-        await sleep(100);
+    client.login(auth.discord_token);
+    await new Promise(resolve => client.on('ready', resolve));
+    console.log("Discord ready.");
+
+    // find our server and pre shift channel
+    console.log("Discord ready");
+    guild = client.guilds.cache.find(g => g.id == auth.server);
+    if (!guild) {
+        await client.destroy();
+        throw `${auth.server} server not found`;
+    }
+    channelName = live_mode ? auth.channel : auth.bot_channel;
+    preshift_channel = guild.channels.cache.find(ch => ch.name == channelName);
+    if (!preshift_channel) {
+        await client.destroy();
+        throw `${channelName} channel not found`;
     }
 
     // get shift info, emt info, and send messages
-    var shifts = await get_shifts(status).catch(err_handle);
+    const shifts = await get_shifts(status).catch(err_handle);
     status["shifts"] = shifts
-    var messages = await send_preshift_messages(shifts).catch(err_handle);
+    const messages = await send_preshift_messages(shifts).catch(err_handle);
     status["messages"] = messages;
 
     // destroy the bot
@@ -93,13 +88,13 @@ exports.handler = async (event) => {
 // if today is 1/1/2019, tomorrow defined as [1/2 5:00 am, 1/3 5:00 am)
 // NOTE: we write down ET dates on airtable, but airtable configured to use GMT
 async function get_shifts(status){
-    var shifts = [];
-    var shift_promises = [];
+    let shifts = [];
+    let shift_promises = [];
     // currently airtable uses GMT times, so we do not need to convert times as lambda system is in GMT
     // first shift of tomorrow
-    var first_tomorrow = moment().add(1, "day").set('hour', 4).set('minute', 29);
+    let first_tomorrow = moment().add(1, "day").set('hour', 4).set('minute', 29);
     // last shift of tomorrow
-    var last_tomorrow = moment().add(2, "day").set('hour', 4).set('minute', 30);
+    let last_tomorrow = moment().add(2, "day").set('hour', 4).set('minute', 30);
 
     if (!test_time) {  
         // months are 0 indexed   
@@ -108,11 +103,12 @@ async function get_shifts(status){
     }
 
     // compose date range formula (IS_AFTER and IS_BEFORE are not inclusive)
-    var after_first = `IS_AFTER({DATE}, ${ts_to_str(first_tomorrow)})`;
-    var before_last = `IS_BEFORE({DATE}, ${ts_to_str(last_tomorrow)})`;
-    var date_range = `IF(AND(${after_first}, ${before_last}), 1, 0)`;
+    const airtableTimeStr = ts => `DATETIME_PARSE("${ts.format('MM-DD-YYYY HH:mm')}$", 'MM-DD-YYYY HH:mm')`;
+    const after_first = `IS_AFTER({DATE}, ${airtableTimeStr(first_tomorrow)})`;
+    const before_last = `IS_BEFORE({DATE}, ${airtableTimeStr(last_tomorrow)})`;
+    const date_range = `IF(AND(${after_first}, ${before_last}), 1, 0)`;
 
-    var time_msg = `\`\`\`ini\n[Preshift Messages for ${first_tomorrow.format('LLL')} - ${last_tomorrow.format('LLL')}!!!]\`\`\``;
+    const time_msg = `\`\`\`ini\n[Preshift Messages for ${first_tomorrow.format('LLL')} - ${last_tomorrow.format('LLL')}!!!]\`\`\``;
 
     console.log(date_range);
 
@@ -124,8 +120,7 @@ async function get_shifts(status){
         fields: ["Date", "Shift", "Shift Type", "Hours", "Rider Shift Record", "Location"],
         view: "Grid view",
         sort: [{field: "Date", direction: "asc"}, {field: "Hours", direction: "desc"}]
-    }).all().then(async function parse_shift_records(records) {
-        // `parse_shift_records` will get called for each page of records.
+    }).all().then(async function(records) {
         console.log("shift pages fetched");
 
         if (!records) throw "pages are undefined" 
@@ -157,7 +152,7 @@ async function process_shift_record(record) {
 }
 
 
-// reaplces linked_field with list fields from linked_table
+// replaces linked_field with list fields from linked_table
 function retrieve_link_data(record, linked_field, linked_table, fields, flatten=false) {
     if (!fields) throw "must specify which fields from linked_field to retrive"
     const t = base.table(linked_table);
