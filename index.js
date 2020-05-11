@@ -12,9 +12,9 @@ const auth = require('./auth.json');
 // time_check false allows bot to run at any time (ie. not just 6:30 pm eastern)
 // send_msgs false prevents message sending
 const live_mode = false;
-const time_check = false;
+const time_check = true;
 const real_time = false;
-const send_msgs = false;
+const send_msgs = true;
 
 const first_test_date = moment("3/7/2020 04:30", "MM/DD/YYYY HH:mm");
 const last_test_date = moment("3/9/2020 04:30", "MM/DD/YYYY HH:mm");
@@ -40,7 +40,7 @@ exports.handler = async (event) => {
         live_mode : live_mode,
         time_check : time_check,
         real_time : real_time,
-        send_msgs : send_msgs
+        send_msgs : send_msgs,
     };
     console.log(JSON.stringify(context));
 
@@ -52,11 +52,11 @@ exports.handler = async (event) => {
         correct_time : now.hour() == 18 && now.minute() == 30,
         time_check : time_check,
         real_time : real_time,
-        send_msgs : send_msgs
+        send_msgs : send_msgs,
     };
 
     // Since there are two triggers one for EST and another for EDT
-    if (time_check && !status["correct_time"]) {
+    if (time_check && !(status["correct_time"]) {
         console.log("Time check failed. Returning");
         console.log(status, "\n");
 
