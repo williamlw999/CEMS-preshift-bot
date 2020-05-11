@@ -12,9 +12,9 @@ const auth = require('./auth.json');
 // time_check false allows bot to run at any time (ie. not just 6:30 pm eastern)
 // send_msgs false prevents message sending
 const live_mode = false;
-const time_check = true;
+const time_check = false;
 const real_time = false;
-const send_msgs = true;
+const send_msgs = false;
 
 const first_test_date = moment("3/7/2020 04:30", "MM/DD/YYYY HH:mm");
 const last_test_date = moment("3/9/2020 04:30", "MM/DD/YYYY HH:mm");
@@ -25,7 +25,7 @@ const disclaimer = "Note: The pre-shift bot is still in beta-testing, so please 
 const contact = "If there is a problem within 24 hours of your shift, please contact the Crew Officer at (720) 454-9113";
 
 // error handling
-const err_handle = (err) => { console.error(err); return; };
+const err_handle = (err) => { console.error(err); return ; };
 
 // AWS Lambda trigger handler
 exports.handler = async (event) => {
@@ -56,7 +56,7 @@ exports.handler = async (event) => {
     };
 
     // Since there are two triggers one for EST and another for EDT
-    if (time_check && !(status["correct_time"]) {
+    if (time_check && !status["correct_time"]) {
         console.log("Time check failed. Returning");
         console.log(status, "\n");
 
