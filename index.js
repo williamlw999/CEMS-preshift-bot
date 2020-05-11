@@ -40,7 +40,7 @@ exports.handler = async (event) => {
         live_mode : live_mode,
         time_check : time_check,
         real_time : real_time,
-        send_msgs : send_msgs,
+        send_msgs : send_msgs
     };
     console.log(JSON.stringify(context));
 
@@ -52,11 +52,11 @@ exports.handler = async (event) => {
         correct_time : now.hour() == 18 && now.minute() == 30,
         time_check : time_check,
         real_time : real_time,
-        send_msgs : send_msgs,
+        send_msgs : send_msgs
     };
 
     // Since there are two triggers one for EST and another for EDT
-    if (time_check && !(status["correct_time"]) {
+    if (time_check && !status["correct_time"]) {
         console.log("Time check failed. Returning");
         console.log(status, "\n");
 
