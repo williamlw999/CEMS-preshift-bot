@@ -49,7 +49,7 @@ exports.handler = async (event) => {
     let status = {
         utc_timestamp : moment().format(),
         et_timestamp : now.format(),
-        correct_time : now.hour() == 18 && now.minute() == 30,
+        correct_time : now.hour() == 18,
         time_check : time_check,
         real_time : real_time,
         send_msgs : send_msgs,
